@@ -49,8 +49,8 @@ contract PayboltStakingPool is OwnableUpgradeable, ReentrancyGuard {
     uint public totalAllocPoint;
 
     uint public earlyWithdrawalFee;
-    uint public constant EARLY_WITHDRAWAL_FEE_PRECISION = 1000000;
-    uint public constant MAX_EARLY_WITHDRAWAL_FEE = 500000;
+    uint public constant EARLY_WITHDRAWAL_FEE_PRECISION = 10000;
+    uint public constant MAX_EARLY_WITHDRAWAL_FEE = 5000;
 
     event Deposit(address indexed user, uint indexed pid, uint amount);
     event Withdraw(address indexed user, uint indexed pid, uint amount);
@@ -60,6 +60,7 @@ contract PayboltStakingPool is OwnableUpgradeable, ReentrancyGuard {
     event PoolAdded(uint allocPoint, uint timeLocked);
     event SetPayboltPerBlock(uint payboltPerBlock);
     event SetEarlyWithdrawalFee(uint earlyWithdrawalFee);
+    event SetPayboltFeeReceiver(address payboltFeeReceiver);
     event SetPoolAllocPoint(uint pid, uint allocPoint);
     event SetPoolMinStake(uint pid, uint minStakeAmount);
     event SetPoolTimeLocked(uint pid, uint timeLocked);
@@ -130,7 +131,7 @@ contract PayboltStakingPool is OwnableUpgradeable, ReentrancyGuard {
     /* ========== External Functions ========== */
 
     // View function to see pending PAYs from Pools on frontend.
-    function pendingPaybolt(uint _pid, address _user) external view returns (uint) {
+    function pendingReward(uint _pid, address _user) external view returns (uint) {
         PoolInfo memory pool = poolInfo[_pid];
         UserPoolInfo memory user = userPoolInfo[_pid][_user];
 
@@ -361,6 +362,12 @@ contract PayboltStakingPool is OwnableUpgradeable, ReentrancyGuard {
         earlyWithdrawalFee = _earlyWithdrawalFee;
         emit SetEarlyWithdrawalFee(earlyWithdrawalFee);
     }
+    
+    function setPayboltFeeReceiver(address _payboltFeeReceiver) external onlyOwner {
+        payboltFeeReceiver = _payboltFeeReceiver;
+        emit SetPayboltFeeReceiver(_payboltFeeReceiver);
+    }
+
 
     function _claimPendingMintReward(uint _pid, address _user) private {
         PoolInfo storage pool = poolInfo[_pid];
