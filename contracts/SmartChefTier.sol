@@ -44,6 +44,7 @@ contract PayboltStakingPool is OwnableUpgradeable, ReentrancyGuard {
     event SetPoolMinStake(uint pid, uint minStakeAmount);
     event SetPoolTimeLocked(uint pid, uint timeLocked);
     event RewardTokenDeposited(uint amount);
+    event Claimed(address user, uint pid, uint rewardAmount);
 
     function initialize(
         address _payboltToken,
@@ -56,25 +57,25 @@ contract PayboltStakingPool is OwnableUpgradeable, ReentrancyGuard {
         poolInfo.push(PoolInfo({
             totalSupply: 0,
             apr: 1200,
-            minStakeAmount: uint(300).mul(IBEP20(payboltToken).decimals()),
+            minStakeAmount: uint(300).mul(uint(10) ** IBEP20(payboltToken).decimals()),
             timeLocked: _timeLocked
         }));
         poolInfo.push(PoolInfo({
             totalSupply: 0,
             apr: 800,
-            minStakeAmount: uint(150).mul(IBEP20(payboltToken).decimals()),
+            minStakeAmount: uint(150).mul(uint(10) ** IBEP20(payboltToken).decimals()),
             timeLocked: _timeLocked
         }));
         poolInfo.push(PoolInfo({
             totalSupply: 0,
             apr: 400,
-            minStakeAmount: uint(50).mul(IBEP20(payboltToken).decimals()),
+            minStakeAmount: uint(50).mul(uint(10) ** IBEP20(payboltToken).decimals()),
             timeLocked: _timeLocked
         }));
         poolInfo.push(PoolInfo({
             totalSupply: 0,
             apr: 100,
-            minStakeAmount: uint(5).mul(IBEP20(payboltToken).decimals()),
+            minStakeAmount: uint(5).mul(uint(10) ** IBEP20(payboltToken).decimals()),
             timeLocked: _timeLocked
         }));
     }
@@ -104,7 +105,11 @@ contract PayboltStakingPool is OwnableUpgradeable, ReentrancyGuard {
     function deposit(uint _pid, uint _amount) external nonReentrant {
         PoolInfo storage pool = poolInfo[_pid];
         UserPoolInfo storage user = userPoolInfo[_pid][msg.sender];
-        require(_amount >= pool.minStakeAmount && user.amount == 0, "deposit: not good");
+        require(_amount + user.amount >= pool.minStakeAmount, "deposit: not good");
+
+        if(user.amount > 0) {
+            claimPendingReward(_pid, msg.sender);
+        }
 
         if (_amount > 0) {
             uint before = IBEP20(payboltToken).balanceOf(address(this));
@@ -119,11 +124,24 @@ contract PayboltStakingPool is OwnableUpgradeable, ReentrancyGuard {
     }
 
     // Withdraw LP tokens
+    function claimPendingReward(uint _pid, address _user) public nonReentrant {
+        UserPoolInfo storage user = userPoolInfo[_pid][_user];
+
+        uint rewardAmount = pendingReward(_pid, _user);
+
+        require(totalRewardSupply >= rewardAmount, "Should charge reward token");
+        totalRewardSupply = totalRewardSupply.sub(rewardAmount);
+        IBEP20(payboltToken).safeTransfer(_user, rewardAmount);
+        user.timeDeposited = block.timestamp;
+        emit Claimed(_user, _pid, rewardAmount);
+    }
+
+    // Withdraw LP tokens
     function withdraw(uint _pid, uint _amount) external nonReentrant {
         PoolInfo storage pool = poolInfo[_pid];
         UserPoolInfo storage user = userPoolInfo[_pid][msg.sender];
         require(user.amount == _amount, "withdraw: not good");
-        require(block.timestamp >= user.timeDeposited.add(pool.timeLocked), "time locked");
+        require(block.timestamp >= user.timeDeposited + pool.timeLocked, "time locked");
 
         if(_amount > 0) {
             user.amount = user.amount.sub(_amount);
