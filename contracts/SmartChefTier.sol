@@ -45,6 +45,8 @@ contract PayboltStakingPool is OwnableUpgradeable, ReentrancyGuard {
     event SetPoolTimeLocked(uint pid, uint timeLocked);
     event RewardTokenDeposited(uint amount);
     event Claimed(address user, uint pid, uint rewardAmount);
+    event EmergencyWithdraw(address user, uint pid, uint amount);
+    event RewardTokenWithdrawn(address user, uint amount);
 
     function initialize(
         address _payboltToken,
@@ -108,7 +110,7 @@ contract PayboltStakingPool is OwnableUpgradeable, ReentrancyGuard {
         require(_amount + user.amount >= pool.minStakeAmount, "deposit: not good");
 
         if(user.amount > 0) {
-            claimPendingReward(_pid, msg.sender);
+            claimPendingReward(_pid, address(msg.sender));
         }
 
         if (_amount > 0) {
@@ -123,8 +125,8 @@ contract PayboltStakingPool is OwnableUpgradeable, ReentrancyGuard {
         }
     }
 
-    // Withdraw LP tokens
-    function claimPendingReward(uint _pid, address _user) public nonReentrant {
+    // claim reward tokens
+    function claimPendingReward(uint _pid, address _user) private {
         UserPoolInfo storage user = userPoolInfo[_pid][_user];
 
         uint rewardAmount = pendingReward(_pid, _user);
@@ -140,17 +142,18 @@ contract PayboltStakingPool is OwnableUpgradeable, ReentrancyGuard {
     function withdraw(uint _pid, uint _amount) external nonReentrant {
         PoolInfo storage pool = poolInfo[_pid];
         UserPoolInfo storage user = userPoolInfo[_pid][msg.sender];
-        require(user.amount == _amount, "withdraw: not good");
+        require(user.amount == _amount || user.amount - _amount >= pool.minStakeAmount, "withdraw: not good");
         require(block.timestamp >= user.timeDeposited + pool.timeLocked, "time locked");
+
+        if(user.amount > 0) {
+            claimPendingReward(_pid, address(msg.sender));
+        }
 
         if(_amount > 0) {
             user.amount = user.amount.sub(_amount);
             pool.totalSupply = pool.totalSupply.sub(_amount);
-            uint rewardAmount = pendingReward(_pid, msg.sender);
-
-            require(totalRewardSupply >= rewardAmount, "Should charge reward token");
-            totalRewardSupply = totalRewardSupply.sub(rewardAmount);
-            IBEP20(payboltToken).safeTransfer(address(msg.sender), _amount.add(rewardAmount));
+            user.timeDeposited = block.timestamp;
+            IBEP20(payboltToken).safeTransfer(address(msg.sender), _amount);
         }
         emit Withdraw(msg.sender, _pid, _amount);
     }
@@ -187,7 +190,7 @@ contract PayboltStakingPool is OwnableUpgradeable, ReentrancyGuard {
     }
 
     // Deposite tokens for reward
-    function depositRewardToken(uint256 _amount) external nonReentrant {
+    function depositRewardToken(uint256 _amount) external onlyOwner {
         uint256 originalBalance = IBEP20(payboltToken).balanceOf(address(this));
         IBEP20(payboltToken).safeTransferFrom(msg.sender, address(this), _amount);
         uint256 currentBalance = IBEP20(payboltToken).balanceOf(address(this));
@@ -200,4 +203,27 @@ contract PayboltStakingPool is OwnableUpgradeable, ReentrancyGuard {
         emit RewardTokenDeposited(_amount);
     }
 
+    // Withdraw without caring about rewards. EMERGENCY ONLY.
+    function withdrawRewardToken() external onlyOwner {
+        uint amount = totalRewardSupply;
+        totalRewardSupply = 0;
+        IBEP20(payboltToken).safeTransfer(address(msg.sender), amount);
+        emit RewardTokenWithdrawn(msg.sender, amount);
+    }
+
+
+    // Withdraw without caring about rewards. EMERGENCY ONLY.
+    function emergencyWithdraw(uint _pid) external nonReentrant {
+        PoolInfo storage pool = poolInfo[_pid];
+        UserPoolInfo storage user = userPoolInfo[_pid][msg.sender];
+        require(block.timestamp >= user.timeDeposited.add(pool.timeLocked), "time locked");
+
+        uint amount = user.amount;
+
+        pool.totalSupply = pool.totalSupply.sub(user.amount);
+        user.amount = 0;
+
+        IBEP20(payboltToken).safeTransfer(address(msg.sender), amount);
+        emit EmergencyWithdraw(msg.sender, _pid, amount);
+    }
 }
