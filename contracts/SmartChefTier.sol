@@ -173,7 +173,7 @@ contract PayboltStakingPool is OwnableUpgradeable, ReentrancyGuard {
                 PoolInfo storage newPool = poolInfo[newPid];
                 UserPoolInfo storage newUser = userPoolInfo[newPid][msg.sender];
 
-                newUser.amount = user.amount;
+                newUser.amount = newUser.amount.add(user.amount);
                 newUser.timeDeposited = user.timeDeposited;
                 newUser.timeClaimed = block.timestamp;
                 user.amount = 0;
@@ -205,14 +205,13 @@ contract PayboltStakingPool is OwnableUpgradeable, ReentrancyGuard {
                 user.amount = remain;
                 user.timeDeposited = block.timestamp;
                 pool.totalSupply = pool.totalSupply.sub(_amount);
-                IBEP20(payboltToken).safeTransfer(address(msg.sender), _amount);
             } else {
                 PoolInfo storage newPool = poolInfo[newPid];
                 UserPoolInfo storage newUser = userPoolInfo[newPid][msg.sender];
                 pool.totalSupply = pool.totalSupply.sub(user.amount);
                 user.amount = 0;
 
-                newUser.amount = remain;
+                newUser.amount = newUser.amount.add(remain);
                 newUser.timeDeposited = block.timestamp;
                 newUser.timeClaimed = block.timestamp;
                 newPool.totalSupply = newPool.totalSupply.add(remain);
