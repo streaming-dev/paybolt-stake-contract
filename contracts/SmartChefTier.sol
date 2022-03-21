@@ -163,21 +163,23 @@ contract PayboltStakingPool is OwnableUpgradeable, ReentrancyGuard {
             );
             uint256 post = IBEP20(payboltToken).balanceOf(address(this));
             uint256 finalAmount = post.sub(before);
-            user.amount = user.amount.add(finalAmount);
+            uint256 remain = user.amount.add(finalAmount);
+            uint256 newPid = _getTierPid(remain);
 
-            uint256 newPid = _getTierPid(user.amount);
             if (newPid == _pid) {
+                user.amount = remain;
                 pool.totalSupply = pool.totalSupply.add(finalAmount);
                 emit Deposit(msg.sender, _pid, finalAmount);
             } else {
                 PoolInfo storage newPool = poolInfo[newPid];
                 UserPoolInfo storage newUser = userPoolInfo[newPid][msg.sender];
-
-                newUser.amount = newUser.amount.add(user.amount);
+                newUser.amount = newUser.amount.add(remain);
                 newUser.timeDeposited = user.timeDeposited;
                 newUser.timeClaimed = block.timestamp;
-                user.amount = 0;
                 newPool.totalSupply = newPool.totalSupply.add(finalAmount);
+
+                pool.totalSupply = pool.totalSupply.sub(user.amount);
+                user.amount = 0;
                 emit DepositAndUpdate(msg.sender, newPid, finalAmount);
             }
         }
@@ -208,13 +210,13 @@ contract PayboltStakingPool is OwnableUpgradeable, ReentrancyGuard {
             } else {
                 PoolInfo storage newPool = poolInfo[newPid];
                 UserPoolInfo storage newUser = userPoolInfo[newPid][msg.sender];
-                pool.totalSupply = pool.totalSupply.sub(user.amount);
-                user.amount = 0;
-
                 newUser.amount = newUser.amount.add(remain);
                 newUser.timeDeposited = block.timestamp;
                 newUser.timeClaimed = block.timestamp;
                 newPool.totalSupply = newPool.totalSupply.add(remain);
+
+                pool.totalSupply = pool.totalSupply.sub(user.amount);
+                user.amount = 0;
                 emit WithdrawAndUpdate(msg.sender, newPid, _amount);
             }
 
@@ -238,10 +240,8 @@ contract PayboltStakingPool is OwnableUpgradeable, ReentrancyGuard {
     // get tier pid
     function _getTierPid(uint256 _amount) internal view returns (uint256) {
         uint256 pid = 0;
-        for (uint256 i = poolInfo.length-1; i >= 0; i--) {
-            if (
-                i == 0 && _amount >= poolInfo[i].minStakeAmount
-            ) {
+        for (uint256 i = poolInfo.length - 1; i >= 0; i--) {
+            if (i == 0 && _amount >= poolInfo[i].minStakeAmount) {
                 pid = i;
                 break;
             }
