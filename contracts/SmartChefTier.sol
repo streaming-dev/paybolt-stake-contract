@@ -38,13 +38,8 @@ contract PayboltStakingPool is OwnableUpgradeable, ReentrancyGuard {
     uint256 private constant YEAR_TIME = 365 days;
 
     event Deposit(address indexed user, uint256 indexed pid, uint256 amount);
-    event DepositAndUpdate(
-        address indexed user,
-        uint256 indexed pid,
-        uint256 amount
-    );
     event Withdraw(address indexed user, uint256 indexed pid, uint256 amount);
-    event WithdrawAndUpdate(
+    event UpdatePool(
         address indexed user,
         uint256 indexed pid,
         uint256 amount
@@ -151,7 +146,6 @@ contract PayboltStakingPool is OwnableUpgradeable, ReentrancyGuard {
             _claimPendingReward(_pid, address(msg.sender));
         } else {
             user.timeDeposited = block.timestamp;
-            user.timeClaimed = block.timestamp;
         }
 
         if (_amount > 0) {
@@ -171,16 +165,9 @@ contract PayboltStakingPool is OwnableUpgradeable, ReentrancyGuard {
                 pool.totalSupply = pool.totalSupply.add(finalAmount);
                 emit Deposit(msg.sender, _pid, finalAmount);
             } else {
-                PoolInfo storage newPool = poolInfo[newPid];
-                UserPoolInfo storage newUser = userPoolInfo[newPid][msg.sender];
-                newUser.amount = newUser.amount.add(remain);
-                newUser.timeDeposited = user.timeDeposited;
-                newUser.timeClaimed = block.timestamp;
-                newPool.totalSupply = newPool.totalSupply.add(finalAmount);
-
                 pool.totalSupply = pool.totalSupply.sub(user.amount);
                 user.amount = 0;
-                emit DepositAndUpdate(msg.sender, newPid, finalAmount);
+                _upgradePool(newPid, remain, user.timeDeposited);
             }
         }
     }
@@ -205,19 +192,12 @@ contract PayboltStakingPool is OwnableUpgradeable, ReentrancyGuard {
 
             if (newPid == _pid) {
                 user.amount = remain;
-                user.timeDeposited = block.timestamp;
                 pool.totalSupply = pool.totalSupply.sub(_amount);
             } else {
-                PoolInfo storage newPool = poolInfo[newPid];
-                UserPoolInfo storage newUser = userPoolInfo[newPid][msg.sender];
-                newUser.amount = newUser.amount.add(remain);
-                newUser.timeDeposited = block.timestamp;
-                newUser.timeClaimed = block.timestamp;
-                newPool.totalSupply = newPool.totalSupply.add(remain);
-
                 pool.totalSupply = pool.totalSupply.sub(user.amount);
                 user.amount = 0;
-                emit WithdrawAndUpdate(msg.sender, newPid, _amount);
+
+                _upgradePool(newPid, remain, block.timestamp);
             }
 
             IBEP20(payboltToken).safeTransfer(address(msg.sender), _amount);
@@ -226,6 +206,7 @@ contract PayboltStakingPool is OwnableUpgradeable, ReentrancyGuard {
 
     // claim reward tokens
     function _claimPendingReward(uint256 _pid, address _user) private {
+        UserPoolInfo storage user = userPoolInfo[_pid][msg.sender];
         uint256 rewardAmount = pendingReward(_pid, _user);
         require(
             totalRewardSupply >= rewardAmount,
@@ -234,6 +215,7 @@ contract PayboltStakingPool is OwnableUpgradeable, ReentrancyGuard {
 
         totalRewardSupply = totalRewardSupply.sub(rewardAmount);
         IBEP20(payboltToken).safeTransfer(_user, rewardAmount);
+        user.timeClaimed = block.timestamp;
         emit Claimed(_user, _pid, rewardAmount);
     }
 
@@ -255,6 +237,50 @@ contract PayboltStakingPool is OwnableUpgradeable, ReentrancyGuard {
             }
         }
         return pid;
+    }
+
+    // Upgrade pool
+    function _upgradePool(
+        uint256 _pid,
+        uint256 _amount,
+        uint256 _timeDeposited
+    ) private {
+        PoolInfo storage pool = poolInfo[_pid];
+        UserPoolInfo storage user = userPoolInfo[_pid][msg.sender];
+        require(
+            _amount + user.amount >= pool.minStakeAmount,
+            "deposit: not good"
+        );
+
+        if (user.amount > 0) {
+            _claimPendingReward(_pid, address(msg.sender));
+        } else {
+            user.timeDeposited = _timeDeposited;
+        }
+
+        if (_amount > 0) {
+            uint256 before = IBEP20(payboltToken).balanceOf(address(this));
+            IBEP20(payboltToken).safeTransferFrom(
+                address(msg.sender),
+                address(this),
+                _amount
+            );
+            uint256 post = IBEP20(payboltToken).balanceOf(address(this));
+            uint256 finalAmount = post.sub(before);
+            uint256 remain = user.amount.add(finalAmount);
+            uint256 newPid = _getTierPid(remain);
+
+            if (newPid == _pid) {
+                user.amount = remain;
+                pool.totalSupply = pool.totalSupply.add(finalAmount);
+                emit UpdatePool(msg.sender, _pid, finalAmount);
+            } else {
+                pool.totalSupply = pool.totalSupply.sub(user.amount);
+                user.amount = 0;
+                
+                _upgradePool(newPid, remain, user.timeDeposited);
+            }
+        }
     }
 
     // Add a new lp to the pool. Can only be called by the owner.
