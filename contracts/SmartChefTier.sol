@@ -146,6 +146,7 @@ contract PayboltStakingPool is OwnableUpgradeable, ReentrancyGuard {
             _claimPendingReward(_pid, address(msg.sender));
         } else {
             user.timeDeposited = block.timestamp;
+            user.timeClaimed = block.timestamp;
         }
 
         if (_amount > 0) {
@@ -167,7 +168,7 @@ contract PayboltStakingPool is OwnableUpgradeable, ReentrancyGuard {
             } else {
                 pool.totalSupply = pool.totalSupply.sub(user.amount);
                 user.amount = 0;
-                _upgradePool(newPid, remain, user.timeDeposited);
+                _upgradePool(newPid, address(msg.sender), remain, user.timeDeposited);
             }
         }
     }
@@ -197,7 +198,7 @@ contract PayboltStakingPool is OwnableUpgradeable, ReentrancyGuard {
                 pool.totalSupply = pool.totalSupply.sub(user.amount);
                 user.amount = 0;
 
-                _upgradePool(newPid, remain, block.timestamp);
+                _upgradePool(newPid, address(msg.sender), remain, block.timestamp);
             }
 
             IBEP20(payboltToken).safeTransfer(address(msg.sender), _amount);
@@ -205,18 +206,18 @@ contract PayboltStakingPool is OwnableUpgradeable, ReentrancyGuard {
     }
 
     // claim reward tokens
-    function _claimPendingReward(uint256 _pid, address _user) private {
-        UserPoolInfo storage user = userPoolInfo[_pid][msg.sender];
-        uint256 rewardAmount = pendingReward(_pid, _user);
+    function _claimPendingReward(uint256 _pid, address _address) private {
+        UserPoolInfo storage user = userPoolInfo[_pid][_address];
+        uint256 rewardAmount = pendingReward(_pid, _address);
         require(
             totalRewardSupply >= rewardAmount,
             "Should charge reward token"
         );
 
         totalRewardSupply = totalRewardSupply.sub(rewardAmount);
-        IBEP20(payboltToken).safeTransfer(_user, rewardAmount);
+        IBEP20(payboltToken).safeTransfer(_address, rewardAmount);
         user.timeClaimed = block.timestamp;
-        emit Claimed(_user, _pid, rewardAmount);
+        emit Claimed(_address, _pid, rewardAmount);
     }
 
     // get tier pid
@@ -242,43 +243,37 @@ contract PayboltStakingPool is OwnableUpgradeable, ReentrancyGuard {
     // Upgrade pool
     function _upgradePool(
         uint256 _pid,
+        address _address,
         uint256 _amount,
         uint256 _timeDeposited
     ) private {
         PoolInfo storage pool = poolInfo[_pid];
-        UserPoolInfo storage user = userPoolInfo[_pid][msg.sender];
+        UserPoolInfo storage user = userPoolInfo[_pid][_address];
         require(
             _amount + user.amount >= pool.minStakeAmount,
             "deposit: not good"
         );
 
         if (user.amount > 0) {
-            _claimPendingReward(_pid, address(msg.sender));
+            _claimPendingReward(_pid, _address);
         } else {
             user.timeDeposited = _timeDeposited;
+            user.timeClaimed = block.timestamp;
         }
 
         if (_amount > 0) {
-            uint256 before = IBEP20(payboltToken).balanceOf(address(this));
-            IBEP20(payboltToken).safeTransferFrom(
-                address(msg.sender),
-                address(this),
-                _amount
-            );
-            uint256 post = IBEP20(payboltToken).balanceOf(address(this));
-            uint256 finalAmount = post.sub(before);
-            uint256 remain = user.amount.add(finalAmount);
+            uint256 remain = user.amount.add(_amount);
             uint256 newPid = _getTierPid(remain);
 
             if (newPid == _pid) {
                 user.amount = remain;
-                pool.totalSupply = pool.totalSupply.add(finalAmount);
-                emit UpdatePool(msg.sender, _pid, finalAmount);
+                pool.totalSupply = pool.totalSupply.add(_amount);
+                emit UpdatePool(_address, _pid, _amount);
             } else {
                 pool.totalSupply = pool.totalSupply.sub(user.amount);
                 user.amount = 0;
                 
-                _upgradePool(newPid, remain, user.timeDeposited);
+                _upgradePool(newPid, _address, remain, user.timeDeposited);
             }
         }
     }
