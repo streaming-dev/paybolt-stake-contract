@@ -50,7 +50,6 @@ contract PayboltStakingPool is OwnableUpgradeable, ReentrancyGuard {
     event SetPoolTimeLocked(uint256 pid, uint256 timeLocked);
     event RewardTokenDeposited(uint256 amount);
     event Claimed(address user, uint256 pid, uint256 rewardAmount);
-    event EmergencyWithdraw(address user, uint256 pid, uint256 amount);
     event RewardTokenWithdrawn(address user, uint256 amount);
 
     function initialize(address _payboltToken, uint256 _timeLocked)
@@ -339,29 +338,11 @@ contract PayboltStakingPool is OwnableUpgradeable, ReentrancyGuard {
         emit RewardTokenDeposited(_amount);
     }
 
-    // Withdraw without caring about rewards. EMERGENCY ONLY.
+    // Withdraw the deposited reward token.
     function withdrawRewardToken() external onlyOwner {
         uint256 amount = totalRewardSupply;
         totalRewardSupply = 0;
         IBEP20(payboltToken).safeTransfer(address(msg.sender), amount);
         emit RewardTokenWithdrawn(msg.sender, amount);
-    }
-
-    // Withdraw without caring about rewards. EMERGENCY ONLY.
-    function emergencyWithdraw(uint256 _pid) external nonReentrant {
-        PoolInfo storage pool = poolInfo[_pid];
-        UserPoolInfo storage user = userPoolInfo[_pid][msg.sender];
-        require(
-            block.timestamp >= user.timeDeposited.add(pool.timeLocked),
-            "time locked"
-        );
-
-        uint256 amount = user.amount;
-
-        pool.totalSupply = pool.totalSupply.sub(user.amount);
-        user.amount = 0;
-
-        IBEP20(payboltToken).safeTransfer(address(msg.sender), amount);
-        emit EmergencyWithdraw(msg.sender, _pid, amount);
     }
 }
