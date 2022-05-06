@@ -63,8 +63,8 @@ contract PayboltStakingPool is OwnableUpgradeable, ReentrancyGuard {
         poolInfo.push(
             PoolInfo({
                 totalSupply: 0,
-                apr: 1200,
-                minStakeAmount: uint256(300).mul(
+                apr: 1400,
+                minStakeAmount: uint256(12000000).mul(
                     uint256(10)**IBEP20(payboltToken).decimals()
                 ),
                 timeLocked: _timeLocked
@@ -74,7 +74,7 @@ contract PayboltStakingPool is OwnableUpgradeable, ReentrancyGuard {
             PoolInfo({
                 totalSupply: 0,
                 apr: 800,
-                minStakeAmount: uint256(150).mul(
+                minStakeAmount: uint256(6000000).mul(
                     uint256(10)**IBEP20(payboltToken).decimals()
                 ),
                 timeLocked: _timeLocked
@@ -84,7 +84,7 @@ contract PayboltStakingPool is OwnableUpgradeable, ReentrancyGuard {
             PoolInfo({
                 totalSupply: 0,
                 apr: 400,
-                minStakeAmount: uint256(50).mul(
+                minStakeAmount: uint256(3000000).mul(
                     uint256(10)**IBEP20(payboltToken).decimals()
                 ),
                 timeLocked: _timeLocked
@@ -93,8 +93,8 @@ contract PayboltStakingPool is OwnableUpgradeable, ReentrancyGuard {
         poolInfo.push(
             PoolInfo({
                 totalSupply: 0,
-                apr: 100,
-                minStakeAmount: uint256(5).mul(
+                apr: 200,
+                minStakeAmount: uint256(300000).mul(
                     uint256(10)**IBEP20(payboltToken).decimals()
                 ),
                 timeLocked: _timeLocked
